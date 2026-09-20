@@ -3,7 +3,9 @@ import { useEffect, useRef } from 'react'
 // Served from public/ — copied verbatim into dist/ on build, so it works on Vercel too.
 const VIDEO_SRC = '/hero.mp4'
 
-const SENSITIVITY = 0.8
+// Seeking to exactly `duration` can land past the final decodable frame and
+// show a stale/blank picture, so we stop one frame short of the end.
+const END_MARGIN = 1 / 30
 
 export default function BackgroundVideo() {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -12,7 +14,6 @@ export default function BackgroundVideo() {
     const video = videoRef.current
     if (!video) return
 
-    let prevX: number | null = null
     let targetTime = 0
     let seeking = false
 
@@ -30,36 +31,21 @@ export default function BackgroundVideo() {
     }
 
     const onMouseMove = (e: MouseEvent) => {
-      if (prevX === null) {
-        prevX = e.clientX
-        return
-      }
       const duration = video.duration
-      if (!duration || Number.isNaN(duration)) {
-        prevX = e.clientX
-        return
-      }
+      if (!duration || Number.isNaN(duration)) return
 
-      const delta = e.clientX - prevX
-      prevX = e.clientX
-
-      const offset = (delta / window.innerWidth) * SENSITIVITY * duration
-      targetTime = Math.min(duration, Math.max(0, targetTime + offset))
+      // Absolute mapping: far-left edge = first frame, far-right edge = last frame.
+      const progress = Math.min(1, Math.max(0, e.clientX / window.innerWidth))
+      targetTime = progress * (duration - END_MARGIN)
 
       if (!seeking) seekTo(targetTime)
     }
 
-    const onLoadedMetadata = () => {
-      targetTime = video.currentTime
-    }
-
     video.addEventListener('seeked', onSeeked)
-    video.addEventListener('loadedmetadata', onLoadedMetadata)
     window.addEventListener('mousemove', onMouseMove)
 
     return () => {
       video.removeEventListener('seeked', onSeeked)
-      video.removeEventListener('loadedmetadata', onLoadedMetadata)
       window.removeEventListener('mousemove', onMouseMove)
     }
   }, [])
